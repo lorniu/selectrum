@@ -576,7 +576,7 @@ This is non-nil during the first call of
 `selectrum--minibuffer-post-command-hook'.")
 
 (defvar-local selectrum--current-history nil
-  "Saved the history-var of completing.")
+  "The value of `minibuffer-history-variable' for the current session.")
 
 (defvar selectrum--total-num-candidates nil
   "Saved number of candidates, used for `selectrum-show-indices'.")
@@ -687,7 +687,7 @@ PRED defaults to `minibuffer-completion-predicate'."
       (selectrum--minibuffer-post-command-hook))))
 
 (defun selectrum--add-current-history ()
-  "Add item to history list for the completing.
+  "Add candidate to history.
 
 Item will be the selected candidate when `selectrum-history-style'
 is 'candidate, or be the current input string when `selectrum-history-style'
@@ -701,7 +701,7 @@ The default behavior is 'candidate."
                       selectrum--start-of-input-marker
                       selectrum--end-of-input-marker)))))
     (when (> (length item) 0)
-      (add-to-history (or selectrum--current-history 'minibuffer-history)
+      (add-to-history selectrum--current-history
                       item))))
 
 ;;;; Hook functions
@@ -1124,7 +1124,7 @@ used as the history-variable."
   (add-hook
    'minibuffer-exit-hook #'selectrum--minibuffer-exit-hook nil 'local)
   (setq-local selectrum--init-p t)
-  (setq selectrum--current-history history)
+  (setq-local selectrum--current-history history)
   (unless selectrum--candidates-overlay
     (setq selectrum--candidates-overlay
           (make-overlay (point) (point) nil 'front-advance 'rear-advance)))
@@ -1448,25 +1448,35 @@ semantics of `cl-defun'."
       (setq selectrum--last-prefix-arg current-prefix-arg))
     (setq selectrum--match-required-p require-match)
     (setq selectrum--move-default-candidate-p (not no-move-default-candidate))
-    (minibuffer-with-setup-hook
-        (lambda ()
-          (selectrum--minibuffer-setup-hook
-           candidates
-           :default-candidate default-candidate
-           :initial-input initial-input
-           :history history))
-      (let* ((minibuffer-allow-text-properties t)
-             (resize-mini-windows 'grow-only)
-             (max-mini-window-height
-              (1+ selectrum-num-candidates-displayed))
-             (prompt (selectrum--remove-default-from-prompt prompt))
-             ;; <https://github.com/raxod502/selectrum/issues/99>
-             (icomplete-mode nil)
-             (history-add-new-input nil)
-             (selectrum-active-p t))
-        (read-from-minibuffer
-         prompt nil selectrum-minibuffer-map nil
-         (or history 'minibuffer-history))))))
+    (let ((keymap (make-sparse-keymap)))
+      (set-keymap-parent keymap minibuffer-local-map)
+      ;; Use `map-apply' instead of `map-do' as the latter is not
+      ;; available in Emacs 25.
+      (map-apply
+       (lambda (key cmd)
+         (when (stringp key)
+           (setq key (kbd key)))
+         (define-key keymap key cmd))
+       selectrum-minibuffer-bindings)
+      (minibuffer-with-setup-hook
+          (lambda ()
+            (selectrum--minibuffer-setup-hook
+             candidates
+             :default-candidate default-candidate
+             :initial-input initial-input
+             :history (or history 'minibuffer-history)))
+        (let* ((minibuffer-allow-text-properties t)
+               (resize-mini-windows 'grow-only)
+               (max-mini-window-height
+                (1+ selectrum-num-candidates-displayed))
+               (prompt (selectrum--remove-default-from-prompt prompt))
+               ;; <https://github.com/raxod502/selectrum/issues/99>
+               (icomplete-mode nil)
+               (history-add-new-input nil)
+               (selectrum-active-p t))
+          (read-from-minibuffer
+           prompt nil keymap nil
+           (or history 'minibuffer-history)))))))
 
 ;;;###autoload
 (defun selectrum-completing-read
