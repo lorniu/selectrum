@@ -1720,7 +1720,9 @@ For PROMPT, COLLECTION, PREDICATE, REQUIRE-MATCH, INITIAL-INPUT,
                          "/"
                          i))
                       i)
-                    (condition-case _
+                    ;; avoid TRAMP hanging and can't quit with 'C-g'
+                    (let ((inhibit-quit nil))
+                      (unless (tramp-tramp-file-p input)
                         (funcall collection dir
                                  (lambda (i)
                                    (when (and (or (not predicate)
@@ -1733,10 +1735,7 @@ For PROMPT, COLLECTION, PREDICATE, REQUIRE-MATCH, INITIAL-INPUT,
                                         `(selectrum-candidate-full
                                           ,(concat dir i))
                                         i))))
-                                 t)
-                      ;; May happen in case user quits out
-                      ;; of a TRAMP prompt.
-                      (quit)))))
+                                 t))))))
              `((input . ,ematch)
                (candidates . ,cands))))))
     (substring-no-properties
